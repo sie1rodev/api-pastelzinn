@@ -1,6 +1,6 @@
 const { MongoClient, ObjectId } = require("mongodb");
 
-const uri = process.env.MONGODB_URI; // coloque sua URI do MongoDB aqui
+const uri = process.env.MONGODB_URI; // coloque sua URI MongoDB
 const dbName = "pastelaria";
 let cachedClient = null;
 let cachedDb = null;
@@ -8,25 +8,21 @@ let cachedDb = null;
 // Conexão com cache
 async function connectToDatabase() {
   if (cachedDb) return { client: cachedClient, db: cachedDb };
-
   const client = await MongoClient.connect(uri);
   const db = client.db(dbName);
-
   cachedClient = client;
   cachedDb = db;
-
   return { client, db };
 }
 
 module.exports = async (req, res) => {
-  // Liberar CORS
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Parse do body
   let body = {};
   if (req.method === "POST") {
     try {
@@ -53,18 +49,25 @@ module.exports = async (req, res) => {
       }
 
       if (req.method === "POST") {
-        const { nome, quantidade } = body;
-        if (!nome || quantidade == null) {
-          return res.status(400).json({ error: "Nome e quantidade obrigatórios." });
+        const { nome, quantidade, preco } = body;
+        if (!nome || quantidade == null || preco == null) {
+          return res.status(400).json({ error: "Nome, quantidade e preço obrigatórios." });
         }
-        const result = await db.collection("sabores").insertOne({ nome, quantidade });
-        return res.status(201).json({ id: result.insertedId, nome, quantidade });
+        const result = await db.collection("sabores").insertOne({ nome, quantidade, preco });
+        return res.status(201).json({ id: result.insertedId, nome, quantidade, preco });
       }
 
       if (req.method === "DELETE") {
         await db.collection("sabores").deleteMany({});
         return res.status(200).json({ message: "Todos os sabores foram removidos!" });
       }
+    }
+
+    // DELETE sabor individual
+    if (req.method === "DELETE" && path.startsWith("/sabores/")) {
+      const id = path.split("/").pop();
+      await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
+      return res.status(200).json({ message: "Sabor removido!" });
     }
 
     // ================ PEDIDOS ================
@@ -109,6 +112,13 @@ module.exports = async (req, res) => {
         await db.collection("pedidos").deleteMany({});
         return res.status(200).json({ message: "Todas as comandas foram zeradas!" });
       }
+    }
+
+    // DELETE pedido individual
+    if (req.method === "DELETE" && path.startsWith("/pedidos/")) {
+      const id = path.split("/").pop();
+      await db.collection("pedidos").deleteOne({ _id: new ObjectId(id) });
+      return res.status(200).json({ message: "Comanda concluída!" });
     }
 
     return res.status(404).json({ error: "Rota não encontrada." });
