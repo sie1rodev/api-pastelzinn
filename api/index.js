@@ -1,56 +1,57 @@
-const fs = require('fs');
 
-const DB_FILE = '../db.json';
 
-function readDB() {
-  if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ sabores: [], pedidos: [] }, null, 2));
-  return JSON.parse(fs.readFileSync(DB_FILE));
+const admin = require('firebase-admin');
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
 }
-function writeDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-}
+const db = admin.firestore();
 
-module.exports = (req, res) => {
+module.exports = async (req, res) => {
   // Sabores
   if (req.method === 'GET' && req.url === '/sabores') {
-    const db = readDB();
-    res.status(200).json(db.sabores);
+    const snapshot = await db.collection('sabores').get();
+    const sabores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(sabores);
     return;
   }
   if (req.method === 'POST' && req.url === '/sabores') {
-    const db = readDB();
-    const sabor = { ...req.body, id: Date.now() };
-    db.sabores.push(sabor);
-    writeDB(db);
-    res.status(200).json(sabor);
+    const sabor = req.body;
+    const docRef = await db.collection('sabores').add(sabor);
+    const doc = await docRef.get();
+    res.status(200).json({ id: doc.id, ...doc.data() });
     return;
   }
   if (req.method === 'DELETE' && req.url.startsWith('/sabores/')) {
     const id = req.url.split('/').pop();
-    const db = readDB();
-    db.sabores = db.sabores.filter(s => s.id != id);
-    writeDB(db);
+    await db.collection('sabores').doc(id).delete();
     res.status(204).end();
     return;
   }
   // Pedidos
   if (req.method === 'GET' && req.url === '/pedidos') {
-    const db = readDB();
-    res.status(200).json(db.pedidos);
+    const snapshot = await db.collection('pedidos').get();
+    const pedidos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(pedidos);
     return;
   }
   if (req.method === 'POST' && req.url === '/pedidos') {
-    const db = readDB();
-    const pedido = { ...req.body, id: Date.now() };
-    db.pedidos.push(pedido);
-    writeDB(db);
-    res.status(200).json(pedido);
+    const pedido = req.body;
+    const docRef = await db.collection('pedidos').add(pedido);
+    const doc = await docRef.get();
+    res.status(200).json({ id: doc.id, ...doc.data() });
     return;
   }
   if (req.method === 'DELETE' && req.url === '/pedidos') {
-    const db = readDB();
-    db.pedidos = [];
-    writeDB(db);
+    // Deleta todos os pedidos
+    const snapshot = await db.collection('pedidos').get();
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
     res.status(204).end();
     return;
   }
