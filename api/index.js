@@ -51,6 +51,34 @@ module.exports = async (req, res) => {
   }
   if (req.method === 'POST' && req.url === '/pedidos') {
     const pedido = req.body;
+    // Espera-se que pedido.sabores seja um array de objetos: [{ saborId, quantidade }]
+    if (!Array.isArray(pedido.sabores) || pedido.sabores.length === 0) {
+      res.status(400).json({ error: 'O pedido deve conter um array de sabores.' });
+      return;
+    }
+    // Busca todos os sabores do pedido
+    const saborIds = pedido.sabores.map(s => new ObjectId(s.saborId));
+    const saboresDB = await db.collection('sabores').find({ _id: { $in: saborIds } }).toArray();
+    // Verifica se todos os sabores existem e têm quantidade suficiente
+    for (const item of pedido.sabores) {
+      const sabor = saboresDB.find(s => s._id.toString() === item.saborId);
+      if (!sabor) {
+        res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+        return;
+      }
+      if (typeof sabor.quantidade !== 'number' || sabor.quantidade < item.quantidade) {
+        res.status(400).json({ error: `Quantidade insuficiente para o sabor: ${sabor.nome}` });
+        return;
+      }
+    }
+    // Desconta o estoque de todos os sabores
+    for (const item of pedido.sabores) {
+      await db.collection('sabores').updateOne(
+        { _id: new ObjectId(item.saborId) },
+        { $inc: { quantidade: -item.quantidade } }
+      );
+    }
+    // Cria o pedido
     const result = await db.collection('pedidos').insertOne(pedido);
     res.status(200).json({ id: result.insertedId, ...pedido });
     return;
