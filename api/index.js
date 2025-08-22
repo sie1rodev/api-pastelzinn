@@ -24,6 +24,23 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Faz o parse manual do body para JSON se for POST ou PUT
+  let body = undefined;
+  if (req.method === 'POST' || req.method === 'PUT') {
+    try {
+      let rawBody = '';
+      await new Promise((resolve, reject) => {
+        req.on('data', chunk => { rawBody += chunk; });
+        req.on('end', resolve);
+        req.on('error', reject);
+      });
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch (e) {
+      res.status(400).json({ error: 'Body inválido: ' + e.message });
+      return;
+    }
+  }
+
   const { db } = await connectToDatabase();
   // Sabores
   if (req.method === 'GET' && req.url === '/sabores') {
@@ -32,7 +49,7 @@ module.exports = async (req, res) => {
     return;
   }
   if (req.method === 'POST' && req.url === '/sabores') {
-    const sabor = req.body;
+    const sabor = body;
     const result = await db.collection('sabores').insertOne(sabor);
     res.status(200).json({ id: result.insertedId, ...sabor });
     return;
@@ -50,7 +67,7 @@ module.exports = async (req, res) => {
     return;
   }
   if (req.method === 'POST' && req.url === '/pedidos') {
-    const pedido = req.body;
+    const pedido = body;
     // Espera-se que pedido.sabores seja um array de objetos: [{ saborId, quantidade }]
     if (!Array.isArray(pedido.sabores) || pedido.sabores.length === 0) {
       res.status(400).json({ error: 'O pedido deve conter um array de sabores.' });
