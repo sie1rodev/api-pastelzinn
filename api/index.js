@@ -52,6 +52,29 @@ module.exports = async (req, res) => {
   }
   if (req.method === 'POST' && req.url === '/pedidos') {
     const pedido = req.body;
+    // Supondo que pedido.saborId e pedido.quantidade existem
+    const saborId = pedido.saborId || pedido.sabor_id || pedido.sabor;
+    const quantidade = pedido.quantidade || 1;
+    if (!saborId) {
+      res.status(400).json({ error: 'saborId é obrigatório' });
+      return;
+    }
+    // Busca o sabor e verifica quantidade disponível
+    const sabor = await db.collection('sabores').findOne({ _id: new ObjectId(saborId) });
+    if (!sabor) {
+      res.status(404).json({ error: 'Sabor não encontrado' });
+      return;
+    }
+    if (typeof sabor.quantidade !== 'number' || sabor.quantidade < quantidade) {
+      res.status(400).json({ error: 'Quantidade insuficiente' });
+      return;
+    }
+    // Atualiza a quantidade disponível
+    await db.collection('sabores').updateOne(
+      { _id: new ObjectId(saborId) },
+      { $inc: { quantidade: -quantidade } }
+    );
+    // Cria o pedido
     const result = await db.collection('pedidos').insertOne(pedido);
     res.status(200).json({ id: result.insertedId, ...pedido });
     return;
