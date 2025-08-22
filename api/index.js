@@ -15,6 +15,16 @@ async function connectToDatabase() {
 }
 
 module.exports = async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   const { db } = await connectToDatabase();
   // Sabores
   if (req.method === 'GET' && req.url === '/sabores') {
