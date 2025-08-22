@@ -3,7 +3,7 @@
 
 const { MongoClient, ObjectId } = require('mongodb');
 
-const uri = process.env.MONGODB_URI || 'mongodb+srv://palstelzinn:230598Op@cluster0.rwax8so.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const uri = process.env.MONGODB_URI;
 const dbName = 'pastelaria';
 let cachedClient = null;
 let cachedDb = null;
