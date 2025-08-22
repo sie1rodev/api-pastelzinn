@@ -1,57 +1,56 @@
 
 
-const admin = require('firebase-admin');
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+const { MongoClient, ObjectId } = require('mongodb');
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+const uri = process.env.MONGODB_URI || 'mongodb+srv://palstelzinn:230598Op@cluster0.rwax8so.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const dbName = 'pastelaria';
+let cachedClient = null;
+let cachedDb = null;
+
+async function connectToDatabase() {
+  if (cachedDb) return { client: cachedClient, db: cachedDb };
+  const client = await MongoClient.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  const db = client.db(dbName);
+  cachedClient = client;
+  cachedDb = db;
+  return { client, db };
 }
-const db = admin.firestore();
 
 module.exports = async (req, res) => {
+  const { db } = await connectToDatabase();
   // Sabores
   if (req.method === 'GET' && req.url === '/sabores') {
-    const snapshot = await db.collection('sabores').get();
-    const sabores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.status(200).json(sabores);
+    const sabores = await db.collection('sabores').find({}).toArray();
+    res.status(200).json(sabores.map(s => ({ ...s, id: s._id })));
     return;
   }
   if (req.method === 'POST' && req.url === '/sabores') {
     const sabor = req.body;
-    const docRef = await db.collection('sabores').add(sabor);
-    const doc = await docRef.get();
-    res.status(200).json({ id: doc.id, ...doc.data() });
+    const result = await db.collection('sabores').insertOne(sabor);
+    res.status(200).json({ id: result.insertedId, ...sabor });
     return;
   }
   if (req.method === 'DELETE' && req.url.startsWith('/sabores/')) {
     const id = req.url.split('/').pop();
-    await db.collection('sabores').doc(id).delete();
+    await db.collection('sabores').deleteOne({ _id: new ObjectId(id) });
     res.status(204).end();
     return;
   }
   // Pedidos
   if (req.method === 'GET' && req.url === '/pedidos') {
-    const snapshot = await db.collection('pedidos').get();
-    const pedidos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.status(200).json(pedidos);
+    const pedidos = await db.collection('pedidos').find({}).toArray();
+    res.status(200).json(pedidos.map(p => ({ ...p, id: p._id })));
     return;
   }
   if (req.method === 'POST' && req.url === '/pedidos') {
     const pedido = req.body;
-    const docRef = await db.collection('pedidos').add(pedido);
-    const doc = await docRef.get();
-    res.status(200).json({ id: doc.id, ...doc.data() });
+    const result = await db.collection('pedidos').insertOne(pedido);
+    res.status(200).json({ id: result.insertedId, ...pedido });
     return;
   }
   if (req.method === 'DELETE' && req.url === '/pedidos') {
-    // Deleta todos os pedidos
-    const snapshot = await db.collection('pedidos').get();
-    const batch = db.batch();
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
+    await db.collection('pedidos').deleteMany({});
     res.status(204).end();
     return;
   }
