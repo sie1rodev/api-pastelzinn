@@ -64,10 +64,14 @@ module.exports = async (req, res) => {
     }
 
     // DELETE sabor individual
-    if (req.method === "DELETE" && path.startsWith("/sabores/")) {
-      const id = path.split("/").pop();
-      await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
-      return res.status(200).json({ message: "Sabor removido!" });
+    if (req.method === "DELETE" && req.url.startsWith("/sabores/")) {
+    const id = req.url.split("/").pop(); // pega o ID da URL
+    const { db } = await connectToDatabase();
+    const result = await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
+    if (result.deletedCount === 0) {
+        return res.status(404).json({ error: "Sabor não encontrado." });
+    }
+    return res.status(200).json({ message: "Sabor removido!" });
     }
 
     // ================ PEDIDOS ================
