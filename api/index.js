@@ -1,11 +1,11 @@
 const { MongoClient, ObjectId } = require("mongodb");
 
-const uri = process.env.MONGODB_URI; // defina no painel da Vercel
+const uri = process.env.MONGODB_URI; // coloque sua URI do MongoDB aqui
 const dbName = "pastelaria";
 let cachedClient = null;
 let cachedDb = null;
 
-// Conexão única com cache
+// Conexão com cache
 async function connectToDatabase() {
   if (cachedDb) return { client: cachedClient, db: cachedDb };
 
@@ -19,20 +19,33 @@ async function connectToDatabase() {
 }
 
 module.exports = async (req, res) => {
-  // 🔓 CORS liberado
+  // Liberar CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,PUT,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  // Parse do body
+  let body = {};
+  if (req.method === "POST") {
+    try {
+      body = await new Promise((resolve, reject) => {
+        let raw = "";
+        req.on("data", chunk => raw += chunk);
+        req.on("end", () => resolve(JSON.parse(raw || "{}")));
+        req.on("error", reject);
+      });
+    } catch (err) {
+      return res.status(400).json({ error: "Body inválido" });
+    }
   }
 
   const { db } = await connectToDatabase();
-  const path = req.url.split("?")[0]; // rota sem query string
+  const path = req.url.split("?")[0];
 
   try {
-    // ================= SABORES =================
+    // ================ SABORES ================
     if (path === "/sabores") {
       if (req.method === "GET") {
         const sabores = await db.collection("sabores").find({}).toArray();
@@ -40,12 +53,12 @@ module.exports = async (req, res) => {
       }
 
       if (req.method === "POST") {
-        const { nome, preco } = req.body;
-        if (!nome || !preco) {
-          return res.status(400).json({ error: "Nome e preço são obrigatórios." });
+        const { nome, quantidade } = body;
+        if (!nome || quantidade == null) {
+          return res.status(400).json({ error: "Nome e quantidade obrigatórios." });
         }
-        const result = await db.collection("sabores").insertOne({ nome, preco });
-        return res.status(201).json({ id: result.insertedId, nome, preco });
+        const result = await db.collection("sabores").insertOne({ nome, quantidade });
+        return res.status(201).json({ id: result.insertedId, nome, quantidade });
       }
 
       if (req.method === "DELETE") {
@@ -54,7 +67,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // ================= PEDIDOS =================
+    // ================ PEDIDOS ================
     if (path === "/pedidos") {
       if (req.method === "GET") {
         const pedidos = await db.collection("pedidos").find({}).toArray();
@@ -62,21 +75,34 @@ module.exports = async (req, res) => {
       }
 
       if (req.method === "POST") {
-        const { nomeCliente, pedido } = req.body;
-        if (!nomeCliente || !Array.isArray(pedido)) {
-          return res
-            .status(400)
-            .json({ error: "O pedido deve conter nomeCliente e um array de sabores." });
+        const { nomeCliente, pedido } = body;
+        if (!nomeCliente || !Array.isArray(pedido) || pedido.length === 0) {
+          return res.status(400).json({ error: "O pedido deve conter nomeCliente e sabores." });
         }
-        const result = await db
-          .collection("pedidos")
-          .insertOne({ nomeCliente, pedido, criadoEm: new Date() });
-        return res.status(201).json({
-          id: result.insertedId,
+
+        // Checar estoque
+        for (const item of pedido) {
+          const sabor = await db.collection("sabores").findOne({ _id: new ObjectId(item.saborId) });
+          if (!sabor) return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          if (sabor.quantidade < item.quantidade) {
+            return res.status(400).json({ error: `Estoque insuficiente para: ${sabor.nome}` });
+          }
+        }
+
+        // Descontar estoque
+        for (const item of pedido) {
+          await db.collection("sabores").updateOne(
+            { _id: new ObjectId(item.saborId) },
+            { $inc: { quantidade: -item.quantidade } }
+          );
+        }
+
+        const result = await db.collection("pedidos").insertOne({
           nomeCliente,
           pedido,
-          criadoEm: new Date(),
+          criadoEm: new Date()
         });
+        return res.status(201).json({ id: result.insertedId, nomeCliente, pedido });
       }
 
       if (req.method === "DELETE") {
@@ -85,10 +111,9 @@ module.exports = async (req, res) => {
       }
     }
 
-    // ================= ROTA INVÁLIDA =================
     return res.status(404).json({ error: "Rota não encontrada." });
   } catch (err) {
-    console.error("Erro no backend:", err);
+    console.error(err);
     return res.status(500).json({ error: "Erro interno no servidor." });
   }
 };
