@@ -1,6 +1,3 @@
-
-
-
 const { MongoClient, ObjectId } = require('mongodb');
 
 const uri = process.env.MONGODB_URI;
@@ -10,7 +7,7 @@ let cachedDb = null;
 
 async function connectToDatabase() {
   if (cachedDb) return { client: cachedClient, db: cachedDb };
-  const client = await MongoClient.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  const client = await MongoClient.connect(uri);
   const db = client.db(dbName);
   cachedClient = client;
   cachedDb = db;
