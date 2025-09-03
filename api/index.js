@@ -18,13 +18,13 @@ async function connectToDatabase() {
 module.exports = async (req, res) => {
   // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
   let body = {};
-  if (req.method === "POST") {
+  if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
       body = await new Promise((resolve, reject) => {
         let raw = "";
@@ -65,13 +65,12 @@ module.exports = async (req, res) => {
 
     // DELETE sabor individual
     if (req.method === "DELETE" && req.url.startsWith("/sabores/")) {
-    const id = req.url.split("/").pop(); // pega o ID da URL
-    const { db } = await connectToDatabase();
-    const result = await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
-    if (result.deletedCount === 0) {
+      const id = req.url.split("/").pop();
+      const result = await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
+      if (result.deletedCount === 0) {
         return res.status(404).json({ error: "Sabor não encontrado." });
-    }
-    return res.status(200).json({ message: "Sabor removido!" });
+      }
+      return res.status(200).json({ message: "Sabor removido!" });
     }
 
     // ================ PEDIDOS ================
@@ -116,6 +115,62 @@ module.exports = async (req, res) => {
         await db.collection("pedidos").deleteMany({});
         return res.status(200).json({ message: "Todas as comandas foram zeradas!" });
       }
+    }
+
+    // EDITAR pedido individual (PUT ou PATCH)
+    if ((req.method === "PUT" || req.method === "PATCH") && path.startsWith("/pedidos/")) {
+      const id = path.split("/").pop();
+      const { nomeCliente, pedido } = body;
+
+      if (!nomeCliente && !pedido) {
+        return res.status(400).json({ error: "Informe nomeCliente ou pedido para atualizar." });
+      }
+
+      // Buscar pedido antigo
+      const pedidoAntigo = await db.collection("pedidos").findOne({ _id: new ObjectId(id) });
+      if (!pedidoAntigo) {
+        return res.status(404).json({ error: "Pedido não encontrado." });
+      }
+
+      // Se veio pedido novo, ajustar estoque
+      if (pedido) {
+        // 1) Repor estoque do pedido antigo
+        for (const item of pedidoAntigo.pedido) {
+          await db.collection("sabores").updateOne(
+            { _id: new ObjectId(item.saborId) },
+            { $inc: { quantidade: item.quantidade } }
+          );
+        }
+
+        // 2) Validar novo pedido
+        for (const item of pedido) {
+          const sabor = await db.collection("sabores").findOne({ _id: new ObjectId(item.saborId) });
+          if (!sabor) return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          if (sabor.quantidade < item.quantidade) {
+            return res.status(400).json({ error: `Estoque insuficiente para: ${sabor.nome}` });
+          }
+        }
+
+        // 3) Descontar novo pedido
+        for (const item of pedido) {
+          await db.collection("sabores").updateOne(
+            { _id: new ObjectId(item.saborId) },
+            { $inc: { quantidade: -item.quantidade } }
+          );
+        }
+      }
+
+      // Atualizar pedido
+      const update = {};
+      if (nomeCliente) update.nomeCliente = nomeCliente;
+      if (pedido) update.pedido = pedido;
+
+      await db.collection("pedidos").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: update }
+      );
+
+      return res.status(200).json({ message: "Pedido atualizado com sucesso!" });
     }
 
     // DELETE pedido individual
