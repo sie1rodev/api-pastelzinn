@@ -1,6 +1,6 @@
 const { MongoClient, ObjectId } = require("mongodb");
 
-const uri = process.env.MONGODB_URI; // coloque sua URI MongoDB
+const uri = process.env.MONGODB_URI;
 const dbName = "pastelaria";
 let cachedClient = null;
 let cachedDb = null;
@@ -81,7 +81,7 @@ module.exports = async (req, res) => {
       }
 
       if (req.method === "POST") {
-        const { nomeCliente, pedido } = body;
+        const { nomeCliente, pedido, paraViagem } = body;
         if (!nomeCliente || !Array.isArray(pedido) || pedido.length === 0) {
           return res.status(400).json({ error: "O pedido deve conter nomeCliente e sabores." });
         }
@@ -106,9 +106,10 @@ module.exports = async (req, res) => {
         const result = await db.collection("pedidos").insertOne({
           nomeCliente,
           pedido,
+          paraViagem: !!paraViagem,
           criadoEm: new Date()
         });
-        return res.status(201).json({ id: result.insertedId, nomeCliente, pedido });
+        return res.status(201).json({ id: result.insertedId, nomeCliente, pedido, paraViagem });
       }
 
       if (req.method === "DELETE") {
@@ -117,13 +118,13 @@ module.exports = async (req, res) => {
       }
     }
 
-    // EDITAR pedido individual (PUT ou PATCH)
+    // EDITAR pedido individual
     if ((req.method === "PUT" || req.method === "PATCH") && path.startsWith("/pedidos/")) {
       const id = path.split("/").pop();
-      const { nomeCliente, pedido } = body;
+      const { nomeCliente, pedido, paraViagem } = body;
 
-      if (!nomeCliente && !pedido) {
-        return res.status(400).json({ error: "Informe nomeCliente ou pedido para atualizar." });
+      if (!nomeCliente && !pedido && paraViagem === undefined) {
+        return res.status(400).json({ error: "Informe algum campo para atualizar." });
       }
 
       // Buscar pedido antigo
@@ -132,17 +133,16 @@ module.exports = async (req, res) => {
         return res.status(404).json({ error: "Pedido não encontrado." });
       }
 
-      // Se veio pedido novo, ajustar estoque
+      // Ajustar estoque se mudou pedido
       if (pedido) {
-        // 1) Repor estoque do pedido antigo
+        // Repor antigo
         for (const item of pedidoAntigo.pedido) {
           await db.collection("sabores").updateOne(
             { _id: new ObjectId(item.saborId) },
             { $inc: { quantidade: item.quantidade } }
           );
         }
-
-        // 2) Validar novo pedido
+        // Validar novo
         for (const item of pedido) {
           const sabor = await db.collection("sabores").findOne({ _id: new ObjectId(item.saborId) });
           if (!sabor) return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
@@ -150,8 +150,7 @@ module.exports = async (req, res) => {
             return res.status(400).json({ error: `Estoque insuficiente para: ${sabor.nome}` });
           }
         }
-
-        // 3) Descontar novo pedido
+        // Descontar novo
         for (const item of pedido) {
           await db.collection("sabores").updateOne(
             { _id: new ObjectId(item.saborId) },
@@ -164,6 +163,7 @@ module.exports = async (req, res) => {
       const update = {};
       if (nomeCliente) update.nomeCliente = nomeCliente;
       if (pedido) update.pedido = pedido;
+      if (paraViagem !== undefined) update.paraViagem = !!paraViagem;
 
       await db.collection("pedidos").updateOne(
         { _id: new ObjectId(id) },
