@@ -1,6 +1,6 @@
 const supabase = require("./supabase");
 
-// ================= BODY PARSER =================
+// ================= BODY =================
 function parseRequestBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -23,23 +23,11 @@ async function getSabores() {
   return data;
 }
 
-async function getPedidos() {
-  const { data, error } = await supabase.from("pedidos").select("*");
-  if (error) throw error;
-  return data;
-}
-
-async function getItens() {
-  const { data, error } = await supabase.from("pedido_itens").select("*");
-  if (error) throw error;
-  return data;
-}
-
-// ================= DASHBOARD (SEMANA) =================
+// ================= DASHBOARD =================
 async function getDashboard() {
-  const pedidos = await getPedidos();
-  const itens = await getItens();
-  const sabores = await getSabores();
+  const { data: pedidos } = await supabase.from("pedidos").select("*");
+  const { data: itens } = await supabase.from("pedido_itens").select("*");
+  const { data: sabores } = await supabase.from("sabores").select("*");
 
   const now = new Date();
   const weekAgo = new Date();
@@ -51,23 +39,18 @@ async function getDashboard() {
     new Date(p.encerrado_em) >= weekAgo
   );
 
-  const pedidosIds = pedidosSemana.map(p => p.id);
+  const ids = pedidosSemana.map(p => p.id);
 
-  const itensSemana = itens.filter(i =>
-    pedidosIds.includes(i.pedido_id)
-  );
+  const itensSemana = itens.filter(i => ids.includes(i.pedido_id));
 
-  // 📦 total pedidos
   const totalPedidos = pedidosSemana.length;
 
-  // 💰 total vendas
   const totalVendas = itensSemana.reduce((sum, item) => {
     const sabor = sabores.find(s => s.id === item.sabor_id);
     const preco = sabor?.preco ?? 14;
     return sum + item.quantidade * preco;
   }, 0);
 
-  // 🥇 ranking sabores
   const ranking = {};
 
   itensSemana.forEach(i => {
@@ -86,7 +69,6 @@ async function getDashboard() {
     .sort((a, b) => b.quantidade - a.quantidade);
 
   return {
-    periodo: "7 dias",
     totalPedidos,
     totalVendas,
     saboresMaisVendidos
@@ -103,11 +85,7 @@ module.exports = async (req, res) => {
 
   let body = {};
   if (["POST", "PUT", "PATCH"].includes(req.method)) {
-    try {
-      body = await parseRequestBody(req);
-    } catch {
-      return res.status(400).json({ error: "Body inválido" });
-    }
+    body = await parseRequestBody(req);
   }
 
   const path = req.url.split("?")[0];
@@ -118,8 +96,7 @@ module.exports = async (req, res) => {
     if (path === "/sabores") {
 
       if (req.method === "GET") {
-        const data = await getSabores();
-        return res.json(data);
+        return res.json(await getSabores());
       }
 
       if (req.method === "POST") {
@@ -134,38 +111,38 @@ module.exports = async (req, res) => {
         if (error) throw error;
         return res.status(201).json(data);
       }
+
+      if (req.method === "DELETE") {
+        await supabase.from("sabores").delete().neq("id", 0);
+        return res.json({ ok: true });
+      }
     }
 
     // ================= PEDIDOS =================
     if (path === "/pedidos") {
 
-      // LISTAR
       if (req.method === "GET") {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("pedidos")
           .select("*")
           .order("criado_em", { ascending: false });
 
-        if (error) throw error;
         return res.json(data);
       }
 
-      // CRIAR PEDIDO
       if (req.method === "POST") {
         const { nomeCliente, pedido, paraViagem } = body;
 
-        const { data: pedidoCriado, error } = await supabase
+        const { data: pedidoCriado } = await supabase
           .from("pedidos")
           .insert([{
             nome_cliente: nomeCliente,
-            para_viagem: !!paraViagem,
+            para_viagem: paraViagem,
             criado_em: new Date().toISOString(),
             status: "aberto"
           }])
           .select()
           .single();
-
-        if (error) throw error;
 
         const itens = pedido.map(i => ({
           pedido_id: pedidoCriado.id,
@@ -175,14 +152,29 @@ module.exports = async (req, res) => {
 
         await supabase.from("pedido_itens").insert(itens);
 
+        // 🔥 BAIXAR ESTOQUE AQUI (CORRIGIDO)
+        for (const i of pedido) {
+          const { data: sabor } = await supabase
+            .from("sabores")
+            .select("quantidade")
+            .eq("id", i.saborId)
+            .single();
+
+          await supabase
+            .from("sabores")
+            .update({
+              quantidade: sabor.quantidade - i.quantidade
+            })
+            .eq("id", i.saborId);
+        }
+
         return res.status(201).json(pedidoCriado);
       }
 
-      // ENCERRAR COMANDA (NÃO DELETA MAIS)
       if (req.method === "DELETE" && req.url.startsWith("/pedidos/")) {
         const id = req.url.split("/").pop();
 
-        const { error } = await supabase
+        await supabase
           .from("pedidos")
           .update({
             status: "encerrado",
@@ -190,22 +182,19 @@ module.exports = async (req, res) => {
           })
           .eq("id", id);
 
-        if (error) throw error;
-
-        return res.json({ message: "Comanda encerrada!" });
+        return res.json({ ok: true });
       }
     }
 
     // ================= DASHBOARD =================
     if (path === "/dashboard") {
-      const data = await getDashboard();
-      return res.json(data);
+      return res.json(await getDashboard());
     }
 
     return res.status(404).json({ error: "Rota não encontrada" });
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Erro interno no servidor" });
+    return res.status(500).json({ error: err.message });
   }
 };
