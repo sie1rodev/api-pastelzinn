@@ -4,19 +4,22 @@ const supabase = require("./supabase");
 function parseRequestBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
+
     req.on("data", chunk => raw += chunk);
+
     req.on("end", () => {
       try {
         resolve(JSON.parse(raw || "{}"));
       } catch (e) {
-        reject(e);
+        resolve({});
       }
     });
+
     req.on("error", reject);
   });
 }
 
-// ================= PATH =================
+// ================= PATH (Vercel SAFE) =================
 function getPath(req) {
   const url = new URL(req.url, `https://${req.headers.host}`);
   return url.pathname;
@@ -75,11 +78,14 @@ async function getDashboard() {
 // ================= HANDLER =================
 module.exports = async (req, res) => {
 
+  // 🔥 CORS SEMPRE PRIMEIRO
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   const path = getPath(req);
   let body = {};
@@ -113,7 +119,12 @@ module.exports = async (req, res) => {
     if (path.startsWith("/sabores/") && req.method === "DELETE") {
       const id = path.split("/").pop();
 
-      await supabase.from("sabores").delete().eq("id", id);
+      const { error } = await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
 
       return res.json({ ok: true });
     }
@@ -161,10 +172,12 @@ module.exports = async (req, res) => {
           .eq("id", i.saborId)
           .single();
 
+        if (!sabor) continue;
+
         await supabase
           .from("sabores")
           .update({
-            quantidade: sabor.quantidade - i.quantidade
+            quantidade: Math.max(0, sabor.quantidade - i.quantidade)
           })
           .eq("id", i.saborId);
       }
@@ -175,13 +188,15 @@ module.exports = async (req, res) => {
     if (path.startsWith("/pedidos/") && req.method === "DELETE") {
       const id = path.split("/").pop();
 
-      await supabase
+      const { error } = await supabase
         .from("pedidos")
         .update({
           status: "encerrado",
           encerrado_em: new Date().toISOString()
         })
         .eq("id", id);
+
+      if (error) throw error;
 
       return res.json({ ok: true });
     }
@@ -205,7 +220,7 @@ module.exports = async (req, res) => {
     return res.status(404).json({ error: "Not found" });
 
   } catch (e) {
-    console.error(e);
+    console.error("❌ ERROR:", e);
     return res.status(500).json({ error: e.message });
   }
 };
