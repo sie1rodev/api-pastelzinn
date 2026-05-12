@@ -1,13 +1,25 @@
 const supabase = require("./supabase");
 
-// ================= BODY =================
+// ================= BODY PARSER =================
 function parseRequestBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", chunk => raw += chunk);
-    req.on("end", () => resolve(JSON.parse(raw || "{}")));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(raw || "{}"));
+      } catch (e) {
+        reject(e);
+      }
+    });
     req.on("error", reject);
   });
+}
+
+// ================= UTIL =================
+function getPath(req) {
+  const url = new URL(req.url, `https://${req.headers.host}`);
+  return url.pathname;
 }
 
 // ================= DASHBOARD =================
@@ -26,7 +38,10 @@ async function getDashboard() {
   );
 
   const ids = pedidosSemana.map(p => p.id);
-  const itensSemana = itens.filter(i => ids.includes(i.pedido_id));
+
+  const itensSemana = itens.filter(i =>
+    ids.includes(i.pedido_id)
+  );
 
   const totalPedidos = pedidosSemana.length;
 
@@ -36,16 +51,27 @@ async function getDashboard() {
   }, 0);
 
   const ranking = {};
+
   itensSemana.forEach(i => {
     ranking[i.sabor_id] = (ranking[i.sabor_id] || 0) + i.quantidade;
   });
 
-  const saboresMaisVendidos = Object.entries(ranking).map(([id, qtd]) => {
-    const s = sabores.find(x => x.id === id);
-    return { nome: s?.nome || "?", quantidade: qtd };
-  }).sort((a,b) => b.quantidade - a.quantidade);
+  const saboresMaisVendidos = Object.entries(ranking)
+    .map(([id, qtd]) => {
+      const s = sabores.find(x => x.id === id);
+      return {
+        id,
+        nome: s?.nome || "Desconhecido",
+        quantidade: qtd
+      };
+    })
+    .sort((a, b) => b.quantidade - a.quantidade);
 
-  return { totalPedidos, totalVendas, saboresMaisVendidos };
+  return {
+    totalPedidos,
+    totalVendas,
+    saboresMaisVendidos
+  };
 }
 
 // ================= HANDLER =================
@@ -56,44 +82,65 @@ module.exports = async (req, res) => {
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const path = req.url.split("?")[0];
+  const path = getPath(req);
   let body = {};
 
-  if (["POST","PUT","PATCH"].includes(req.method)) {
+  if (["POST", "PUT", "PATCH"].includes(req.method)) {
     body = await parseRequestBody(req);
   }
 
   try {
 
-    // ===== SABORES =====
+    // ================= SABORES =================
     if (path === "/sabores") {
 
       if (req.method === "GET") {
-        const { data } = await supabase.from("sabores").select("*");
+        const { data, error } = await supabase
+          .from("sabores")
+          .select("*");
+
+        if (error) throw error;
         return res.json(data);
       }
 
       if (req.method === "POST") {
         const { nome, quantidade, preco = 14 } = body;
 
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("sabores")
           .insert([{ nome, quantidade, preco }])
           .select()
           .single();
 
+        if (error) throw error;
         return res.status(201).json(data);
       }
     }
 
-    // ===== PEDIDOS =====
+    // ================= DELETE SABOR (CORRIGIDO) =================
+    if (path.startsWith("/sabores/") && req.method === "DELETE") {
+      const id = path.split("/").pop();
+
+      const { error } = await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      return res.json({ ok: true });
+    }
+
+    // ================= PEDIDOS =================
     if (path === "/pedidos") {
 
       if (req.method === "GET") {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("pedidos")
           .select("*")
           .order("criado_em", { ascending: false });
+
+        if (error) throw error;
 
         return res.json(data);
       }
@@ -101,7 +148,7 @@ module.exports = async (req, res) => {
       if (req.method === "POST") {
         const { nomeCliente, pedido, paraViagem } = body;
 
-        const { data: p } = await supabase
+        const { data: p, error } = await supabase
           .from("pedidos")
           .insert([{
             nome_cliente: nomeCliente,
@@ -112,6 +159,8 @@ module.exports = async (req, res) => {
           .select()
           .single();
 
+        if (error) throw error;
+
         const itens = pedido.map(i => ({
           pedido_id: p.id,
           sabor_id: i.saborId,
@@ -120,9 +169,9 @@ module.exports = async (req, res) => {
 
         await supabase.from("pedido_itens").insert(itens);
 
-        // 🔥 baixa estoque
+        // ================= BAIXA ESTOQUE =================
         for (const i of pedido) {
-          const { data: s } = await supabase
+          const { data: sabor } = await supabase
             .from("sabores")
             .select("quantidade")
             .eq("id", i.saborId)
@@ -130,15 +179,18 @@ module.exports = async (req, res) => {
 
           await supabase
             .from("sabores")
-            .update({ quantidade: s.quantidade - i.quantidade })
+            .update({
+              quantidade: sabor.quantidade - i.quantidade
+            })
             .eq("id", i.saborId);
         }
 
         return res.status(201).json(p);
       }
 
-      if (req.method === "DELETE" && req.url.includes("/pedidos/")) {
-        const id = req.url.split("/").pop();
+      // ================= ENCERRAR PEDIDO =================
+      if (req.method === "DELETE" && path.startsWith("/pedidos/")) {
+        const id = path.split("/").pop();
 
         await supabase
           .from("pedidos")
@@ -152,7 +204,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // ===== DASHBOARD =====
+    // ================= DASHBOARD =================
     if (path === "/dashboard") {
       return res.json(await getDashboard());
     }
@@ -160,6 +212,7 @@ module.exports = async (req, res) => {
     return res.status(404).json({ error: "Not found" });
 
   } catch (e) {
+    console.error(e);
     return res.status(500).json({ error: e.message });
   }
 };
