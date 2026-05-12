@@ -1,90 +1,122 @@
-const { supabase } = require("./lib/supabase");
+const { supabase } = require("../lib/supabase");
 
 module.exports = async (req, res) => {
+
+  // ======================
+  // CORS
+  // ======================
   res.setHeader("Access-Control-Allow-Origin", "*");
-<<<<<<< HEAD
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-=======
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
->>>>>>> parent of f47a228 (refactor: standardize CORS headers and response handling across API endpoints)
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,DELETE,OPTIONS"
+  );
 
-<<<<<<< HEAD
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
+
+  // Preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  // Body parse seguro
   const body =
     typeof req.body === "string"
       ? JSON.parse(req.body)
       : req.body || {};
 
+  // ======================
+  // GET - LISTAR SABORES
+  // ======================
   if (req.method === "GET") {
-    const { data } = await supabase.from("sabores").select("*");
-    return res.status(200).json({ data });
+
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .select("*");
+
+    return res.status(200).json({
+      data,
+      error
+    });
   }
 
+  // ======================
+  // POST - CRIAR SABOR
+  // ======================
   if (req.method === "POST") {
+
     const { nome, quantidade, preco } = body;
 
-    const { data } = await supabase
-      .from("sabores")
-      .insert([{ nome, quantidade, preco }]);
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .insert([
+          {
+            nome,
+            quantidade,
+            preco
+          }
+        ])
+        .select();
 
-    return res.status(200).json({ data });
+    return res.status(200).json({
+      data,
+      error
+    });
   }
 
+  // ======================
+  // PUT - EDITAR SABOR
+  // ======================
   if (req.method === "PUT") {
+
     const { id, nome, quantidade, preco } = body;
 
-    const { data } = await supabase
-=======
-  const body = req.body ? JSON.parse(req.body) : {};
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .update({
+          nome,
+          quantidade,
+          preco
+        })
+        .eq("id", id)
+        .select();
 
-  // GET
-  if (req.method === "GET") {
-    const { data, error } = await supabase.from("sabores").select("*");
-    return res.status(200).json({ data, error });
+    return res.status(200).json({
+      data,
+      error
+    });
   }
 
-  // POST
-  if (req.method === "POST") {
-    const { nome, quantidade, preco } = body;
-
-    const { data, error } = await supabase
-      .from("sabores")
-      .insert([{ nome, quantidade, preco }]);
-
-    return res.status(200).json({ data, error });
-  }
-
-  // PUT (editar tudo)
-  if (req.method === "PUT") {
-    const { id, nome, quantidade, preco } = body;
-
-    const { data, error } = await supabase
->>>>>>> parent of f47a228 (refactor: standardize CORS headers and response handling across API endpoints)
-      .from("sabores")
-      .update({ nome, quantidade, preco })
-      .eq("id", id);
-
-<<<<<<< HEAD
-    return res.status(200).json({ data });
-  }
-
+  // ======================
+  // DELETE - EXCLUIR SABOR
+  // ======================
   if (req.method === "DELETE") {
+
     const { id } = body;
 
-    const { data } = await supabase
-      .from("sabores")
-      .delete()
-      .eq("id", id);
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id)
+        .select();
 
-    return res.status(200).json({ data });
+    return res.status(200).json({
+      data,
+      error
+    });
   }
 
-=======
-    return res.status(200).json({ data, error });
-  }
-
->>>>>>> parent of f47a228 (refactor: standardize CORS headers and response handling across API endpoints)
-  return res.status(405).json({ error: "Method not allowed" });
+  // ======================
+  // METHOD NOT ALLOWED
+  // ======================
+  return res.status(405).json({
+    error: "Method not allowed"
+  });
 };
