@@ -5,106 +5,132 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-export default async function handler(req, res) {
-  res.setHeader("Content-Type", "application/json");
+// ======================
+// CORS (OBRIGATÓRIO)
+// ======================
+function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+// ======================
+// HANDLER PRINCIPAL
+// ======================
+export default async function handler(req, res) {
+  setCors(res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  const { method, url, body } = req;
+  const { method, url } = req;
 
-  req.body = typeof body === "string" ? JSON.parse(body || "{}") : body;
+  let body = req.body;
+
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
 
   try {
 
     // ======================
     // 🍔 SABORES
     // ======================
-    if (url.includes("/sabores") && method === "GET") {
-      const { data } = await supabase.from("sabores").select("*");
-      return res.json(data);
-    }
+    if (url.includes("/sabores")) {
 
-    if (url.includes("/sabores") && method === "POST") {
-      const { nome, quantidade, preco } = req.body;
+      if (method === "GET") {
+        const { data } = await supabase.from("sabores").select("*");
+        return res.json(data);
+      }
 
-      const { data, error } = await supabase
-        .from("sabores")
-        .insert([{ nome, quantidade, preco }]);
+      if (method === "POST") {
+        const { nome, quantidade, preco } = body;
 
-      return res.json({ data, error });
-    }
+        const { data, error } = await supabase
+          .from("sabores")
+          .insert([{ nome, quantidade, preco }]);
 
-    if (url.includes("/sabores") && method === "PUT") {
-      const { id, ...rest } = req.body;
+        return res.json({ data, error });
+      }
 
-      const { data, error } = await supabase
-        .from("sabores")
-        .update(rest)
-        .eq("id", id);
+      if (method === "PUT") {
+        const { id, ...rest } = body;
 
-      return res.json({ data, error });
+        const { data, error } = await supabase
+          .from("sabores")
+          .update(rest)
+          .eq("id", id);
+
+        return res.json({ data, error });
+      }
     }
 
     // ======================
     // 🧾 PEDIDOS
     // ======================
-    if (url.includes("/pedidos") && method === "GET") {
-      const { data } = await supabase
-        .from("pedidos")
-        .select("*, pedido_itens(*, sabores(*))");
+    if (url.includes("/pedidos")) {
 
-      return res.json(data);
-    }
+      if (method === "GET") {
+        const { data } = await supabase
+          .from("pedidos")
+          .select("*, pedido_itens(*, sabores(*))");
 
-    if (url.includes("/pedidos") && method === "POST") {
-      const { nome_cliente, para_viagem } = req.body;
+        return res.json(data);
+      }
 
-      const { data, error } = await supabase
-        .from("pedidos")
-        .insert([{ nome_cliente, para_viagem }])
-        .select();
+      if (method === "POST") {
+        const { nome_cliente, para_viagem } = body;
 
-      return res.json({ data, error });
+        const { data, error } = await supabase
+          .from("pedidos")
+          .insert([{ nome_cliente, para_viagem }])
+          .select();
+
+        return res.json({ data, error });
+      }
     }
 
     // ======================
     // 🍽 ITENS
     // ======================
-    if (url.includes("/itens") && method === "POST") {
-      const { pedido_id, sabor_id, quantidade } = req.body;
+    if (url.includes("/itens")) {
 
-      const { data, error } = await supabase
-        .from("pedido_itens")
-        .insert([{ pedido_id, sabor_id, quantidade }]);
+      if (method === "POST") {
+        const { pedido_id, sabor_id, quantidade } = body;
 
-      return res.json({ data, error });
-    }
+        const { data, error } = await supabase
+          .from("pedido_itens")
+          .insert([{ pedido_id, sabor_id, quantidade }]);
 
-    if (url.includes("/itens") && method === "PUT") {
-      const { id, quantidade } = req.body;
+        return res.json({ data, error });
+      }
 
-      const { data, error } = await supabase
-        .from("pedido_itens")
-        .update({ quantidade })
-        .eq("id", id);
+      if (method === "PUT") {
+        const { id, quantidade } = body;
 
-      return res.json({ data, error });
-    }
+        const { data, error } = await supabase
+          .from("pedido_itens")
+          .update({ quantidade })
+          .eq("id", id);
 
-    if (url.includes("/itens") && method === "DELETE") {
-      const { id } = req.body;
+        return res.json({ data, error });
+      }
 
-      const { data, error } = await supabase
-        .from("pedido_itens")
-        .delete()
-        .eq("id", id);
+      if (method === "DELETE") {
+        const { id } = body;
 
-      return res.json({ data, error });
+        const { data, error } = await supabase
+          .from("pedido_itens")
+          .delete()
+          .eq("id", id);
+
+        return res.json({ data, error });
+      }
     }
 
     // ======================
