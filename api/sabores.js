@@ -5,7 +5,9 @@ export default async function handler(req, res) {
 
   const { method, body } = req;
 
-  const parsedBody = typeof body === "string" ? JSON.parse(body || "{}") : body;
+  const dataBody = typeof body === "string"
+    ? JSON.parse(body || "{}")
+    : body;
 
   if (method === "GET") {
     const { data } = await supabase.from("sabores").select("*");
@@ -13,24 +15,24 @@ export default async function handler(req, res) {
   }
 
   if (method === "POST") {
-    const { nome, quantidade, preco } = parsedBody;
+    const { nome, quantidade, preco } = dataBody;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sabores")
       .insert([{ nome, quantidade, preco }]);
 
-    return res.json(data);
+    return res.json({ data, error });
   }
 
   if (method === "PUT") {
-    const { id, ...rest } = parsedBody;
+    const { id, ...rest } = dataBody;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sabores")
       .update(rest)
       .eq("id", id);
 
-    return res.json(data);
+    return res.json({ data, error });
   }
 
   res.status(405).json({ error: "Method not allowed" });

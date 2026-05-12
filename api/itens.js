@@ -5,38 +5,40 @@ export default async function handler(req, res) {
 
   const { method, body } = req;
 
-  const parsedBody = typeof body === "string" ? JSON.parse(body || "{}") : body;
+  const dataBody = typeof body === "string"
+    ? JSON.parse(body || "{}")
+    : body;
 
   if (method === "POST") {
-    const { pedido_id, sabor_id, quantidade } = parsedBody;
+    const { pedido_id, sabor_id, quantidade } = dataBody;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pedido_itens")
       .insert([{ pedido_id, sabor_id, quantidade }]);
 
-    return res.json(data);
+    return res.json({ data, error });
   }
 
   if (method === "PUT") {
-    const { id, quantidade } = parsedBody;
+    const { id, quantidade } = dataBody;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pedido_itens")
       .update({ quantidade })
       .eq("id", id);
 
-    return res.json(data);
+    return res.json({ data, error });
   }
 
   if (method === "DELETE") {
-    const { id } = parsedBody;
+    const { id } = dataBody;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pedido_itens")
       .delete()
       .eq("id", id);
 
-    return res.json(data);
+    return res.json({ data, error });
   }
 
   res.status(405).json({ error: "Method not allowed" });

@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     .select("*")
     .gte("criado_em", seteDias);
 
-  res.json({
+  return res.json({
     vendas_semana: data?.length || 0
   });
 }
