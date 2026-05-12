@@ -1,17 +1,21 @@
-import { supabase } from "../lib/supabase.js";
+const { createClient } = require("@supabase/supabase-js");
 
-export default async function handler(req, res) {
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const seteDias = new Date(Date.now() - 7 * 86400000).toISOString();
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("pedidos")
     .select("*")
     .gte("criado_em", seteDias);
 
-  return res.json({
-    vendas_semana: data?.length || 0,
-    error
+  return res.status(200).json({
+    vendas_semana: data?.length || 0
   });
-}
+};
