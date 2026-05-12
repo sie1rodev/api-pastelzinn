@@ -1,121 +1,127 @@
-const API_URL = "https://api-pastelzinn.vercel.app";
+import { createClient } from "@supabase/supabase-js";
 
-// ================= INIT =================
-document.addEventListener("DOMContentLoaded", () => {
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
-  if (document.getElementById("saboresLista")) {
-    loadSabores();
-    document.getElementById("confirmarPedido").onclick = sendPedido;
-  }
+export default async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json");
 
-  if (document.getElementById("listaPedidos")) {
-    loadPedidos();
-    document.getElementById("zerarComandas").onclick = clearPedidos;
-  }
+  const { method, url, body } = req;
 
-  if (document.getElementById("listaSabores")) {
-    loadSaboresAdmin();
-    document.getElementById("formSabor").onsubmit = addSabor;
-  }
+  req.body = typeof body === "string" ? JSON.parse(body || "{}") : body;
 
-  if (document.getElementById("chartSabores")) {
-    loadDashboard();
-  }
-});
+  try {
 
-// ================= SABORES CLIENTE =================
-async function loadSabores() {
-  const sabores = await fetch(`${API_URL}/sabores`).then(r => r.json());
+    // ======================
+    // 🍔 SABORES
+    // ======================
+    if (url.includes("/sabores") && method === "GET") {
+      const { data } = await supabase.from("sabores").select("*");
+      return res.json(data);
+    }
 
-  const lista = document.getElementById("saboresLista");
-  lista.innerHTML = "";
+    if (url.includes("/sabores") && method === "POST") {
+      const { nome, quantidade, preco } = req.body;
 
-  sabores.forEach(s => {
-    const div = document.createElement("div");
+      const { data, error } = await supabase
+        .from("sabores")
+        .insert([{ nome, quantidade, preco }]);
 
-    div.innerHTML = `
-      <strong>${s.nome}</strong>
-      <small>Estoque: ${s.quantidade}</small>
+      return res.json({ data, error });
+    }
 
-      <input type="number" id="qtd-${s.id}" value="0" min="0" />
-    `;
+    if (url.includes("/sabores") && method === "PUT") {
+      const { id, ...rest } = req.body;
 
-    lista.appendChild(div);
-  });
-}
+      const { data, error } = await supabase
+        .from("sabores")
+        .update(rest)
+        .eq("id", id);
 
-// ================= PEDIDO =================
-async function sendPedido() {
+      return res.json({ data, error });
+    }
 
-  const nome = document.getElementById("nomeCliente").value;
-  const paraViagem = document.getElementById("paraViagem").checked;
+    // ======================
+    // 🧾 PEDIDOS
+    // ======================
+    if (url.includes("/pedidos") && method === "GET") {
+      const { data } = await supabase
+        .from("pedidos")
+        .select("*, pedido_itens(*, sabores(*))");
 
-  const sabores = await fetch(`${API_URL}/sabores`).then(r => r.json());
+      return res.json(data);
+    }
 
-  const pedido = sabores
-    .map(s => ({
-      saborId: s.id,
-      quantidade: Number(document.getElementById(`qtd-${s.id}`).value)
-    }))
-    .filter(i => i.quantidade > 0);
+    if (url.includes("/pedidos") && method === "POST") {
+      const { nome_cliente, para_viagem } = req.body;
 
-  await fetch(`${API_URL}/pedidos`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nomeCliente: nome, pedido, paraViagem })
-  });
+      const { data, error } = await supabase
+        .from("pedidos")
+        .insert([{ nome_cliente, para_viagem }])
+        .select();
 
-  alert("Pedido enviado!");
-  loadSabores();
-}
+      return res.json({ data, error });
+    }
 
-// ================= PEDIDOS =================
-async function loadPedidos() {
-  const pedidos = await fetch(`${API_URL}/pedidos-completos`).then(r => r.json());
+    // ======================
+    // 🍽 ITENS
+    // ======================
+    if (url.includes("/itens") && method === "POST") {
+      const { pedido_id, sabor_id, quantidade } = req.body;
 
-  const lista = document.getElementById("listaPedidos");
-  lista.innerHTML = "";
+      const { data, error } = await supabase
+        .from("pedido_itens")
+        .insert([{ pedido_id, sabor_id, quantidade }]);
 
-  pedidos
-    .filter(p => p.status === "aberto")
-    .forEach(p => {
+      return res.json({ data, error });
+    }
 
-      const li = document.createElement("li");
+    if (url.includes("/itens") && method === "PUT") {
+      const { id, quantidade } = req.body;
 
-      li.innerHTML = `<strong>${p.nome_cliente}</strong> ${p.para_viagem ? "🚗" : ""}`;
+      const { data, error } = await supabase
+        .from("pedido_itens")
+        .update({ quantidade })
+        .eq("id", id);
 
-      const ul = document.createElement("ul");
+      return res.json({ data, error });
+    }
 
-      p.itens.forEach(i => {
-        const item = document.createElement("li");
-        item.innerText = `${i.quantidade}x ${i.sabor?.nome || "?"}`;
-        ul.appendChild(item);
+    if (url.includes("/itens") && method === "DELETE") {
+      const { id } = req.body;
+
+      const { data, error } = await supabase
+        .from("pedido_itens")
+        .delete()
+        .eq("id", id);
+
+      return res.json({ data, error });
+    }
+
+    // ======================
+    // 📊 DASHBOARD
+    // ======================
+    if (url.includes("/dashboard")) {
+      const seteDias = new Date(Date.now() - 7 * 86400000).toISOString();
+
+      const { data } = await supabase
+        .from("pedidos")
+        .select("*")
+        .gte("criado_em", seteDias);
+
+      return res.json({
+        vendas_semana: data?.length || 0
       });
+    }
 
-      li.appendChild(ul);
+    return res.status(404).json({ error: "Rota não encontrada" });
 
-      const btn = document.createElement("button");
-      btn.innerText = "Encerrar";
-
-      btn.onclick = async () => {
-        await fetch(`${API_URL}/pedidos/${p.id}`, { method: "DELETE" });
-        loadPedidos();
-      };
-
-      li.appendChild(btn);
-      lista.appendChild(li);
+  } catch (err) {
+    return res.status(500).json({
+      error: "Erro interno",
+      details: err.message
     });
-}
-
-// ================= LIMPAR =================
-async function clearPedidos() {
-  const pedidos = await fetch(`${API_URL}/pedidos`).then(r => r.json());
-
-  await Promise.all(
-    pedidos.map(p =>
-      fetch(`${API_URL}/pedidos/${p.id}`, { method: "DELETE" })
-    )
-  );
-
-  loadPedidos();
+  }
 }
