@@ -1,27 +1,30 @@
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require("../lib/supabase");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  const body = req.body ? JSON.parse(req.body) : {};
+
+  // GET
   if (req.method === "GET") {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pedidos")
       .select("*, pedido_itens(*, sabores(*))");
 
-    return res.status(200).json(data);
+    return res.status(200).json({ data, error });
   }
 
+  // POST
   if (req.method === "POST") {
-    const body = JSON.parse(req.body || "{}");
+    const { nome_cliente, para_viagem } = body;
 
     const { data, error } = await supabase
       .from("pedidos")
-      .insert([body])
+      .insert([{ nome_cliente, para_viagem }])
       .select();
 
     return res.status(200).json({ data, error });
