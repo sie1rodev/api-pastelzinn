@@ -1,8 +1,7 @@
-const { supabase } = require("./lib/supabase");
+const { supabase } = require("../lib/supabase");
+const allowCors = require("../lib/allowCors");
 
-module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-
+const handler = async (req, res) => {
   const seteDias = new Date(Date.now() - 7 * 86400000).toISOString();
 
   const { data } = await supabase
@@ -15,3 +14,5 @@ module.exports = async (req, res) => {
     vendas_semana: data?.length || 0
   });
 };
+
+module.exports = allowCors(handler);

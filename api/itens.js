@@ -1,12 +1,7 @@
-const { supabase } = require("./lib/supabase");
+const { supabase } = require("../lib/supabase");
+const allowCors = require("../lib/allowCors");
 
-module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
-
+const handler = async (req, res) => {
   const body = req.body ? JSON.parse(req.body) : {};
 
   // POST - adicionar item
@@ -46,3 +41,5 @@ module.exports = async (req, res) => {
 
   return res.status(405).json({ error: "Method not allowed" });
 };
+
+module.exports = allowCors(handler);
