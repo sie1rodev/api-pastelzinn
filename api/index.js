@@ -1,18 +1,96 @@
-const { MongoClient, ObjectId } = require("mongodb");
+const supabase = require("./supabase");
 
-const uri = process.env.MONGODB_URI;
-const dbName = "pastelaria";
-let cachedClient = null;
-let cachedDb = null;
+/**
+ * Parse body da request (serverless safe)
+ */
+function parseRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", chunk => (raw += chunk));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(raw || "{}"));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on("error", reject);
+  });
+}
 
-// Conexão com cache
-async function connectToDatabase() {
-  if (cachedDb) return { client: cachedClient, db: cachedDb };
-  const client = await MongoClient.connect(uri);
-  const db = client.db(dbName);
-  cachedClient = client;
-  cachedDb = db;
-  return { client, db };
+/**
+ * Busca todos sabores e transforma em MAP (otimização)
+ */
+async function getSaboresMap() {
+  const { data, error } = await supabase
+    .from("sabores")
+    .select("id,nome,quantidade,preco");
+
+  if (error) throw error;
+
+  const map = {};
+  data.forEach(s => {
+    map[s.id] = s;
+  });
+
+  return map;
+}
+
+/**
+ * Busca pedidos com itens (sem N+1 query)
+ */
+async function getAllPedidos() {
+  const { data: pedidos, error: pedidosError } = await supabase
+    .from("pedidos")
+    .select("*");
+
+  if (pedidosError) throw pedidosError;
+
+  const { data: itens, error: itensError } = await supabase
+    .from("pedido_itens")
+    .select("*");
+
+  if (itensError) throw itensError;
+
+  return pedidos.map(pedido => ({
+    id: pedido.id,
+    nomeCliente: pedido.nome_cliente,
+    paraViagem: pedido.para_viagem,
+    criadoEm: pedido.criado_em,
+    pedido: itens
+      .filter(i => i.pedido_id === pedido.id)
+      .map(i => ({
+        saborId: i.sabor_id,
+        quantidade: i.quantidade
+      }))
+  }));
+}
+
+/**
+ * Pedido por ID
+ */
+async function getPedidoById(id) {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Itens do pedido
+ */
+async function getPedidoItems(pedidoId) {
+  const { data, error } = await supabase
+    .from("pedido_itens")
+    .select("*")
+    .eq("pedido_id", pedidoId);
+
+  if (error) throw error;
+  return data;
 }
 
 module.exports = async (req, res) => {
@@ -26,157 +104,230 @@ module.exports = async (req, res) => {
   let body = {};
   if (["POST", "PUT", "PATCH"].includes(req.method)) {
     try {
-      body = await new Promise((resolve, reject) => {
-        let raw = "";
-        req.on("data", chunk => raw += chunk);
-        req.on("end", () => resolve(JSON.parse(raw || "{}")));
-        req.on("error", reject);
-      });
-    } catch (err) {
+      body = await parseRequestBody(req);
+    } catch {
       return res.status(400).json({ error: "Body inválido" });
     }
   }
 
-  const { db } = await connectToDatabase();
   const path = req.url.split("?")[0];
 
   try {
-    // ================ SABORES ================
+    // ================= SABORES =================
     if (path === "/sabores") {
       if (req.method === "GET") {
-        const sabores = await db.collection("sabores").find({}).toArray();
-        return res.status(200).json(sabores);
+        const { data, error } = await supabase.from("sabores").select("*");
+        if (error) throw error;
+        return res.status(200).json(data);
       }
 
       if (req.method === "POST") {
         const { nome, quantidade, preco } = body;
+
         if (!nome || quantidade == null || preco == null) {
           return res.status(400).json({ error: "Nome, quantidade e preço obrigatórios." });
         }
-        const result = await db.collection("sabores").insertOne({ nome, quantidade, preco });
-        return res.status(201).json({ id: result.insertedId, nome, quantidade, preco });
+
+        const { data, error } = await supabase
+          .from("sabores")
+          .insert([{ nome, quantidade, preco }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        return res.status(201).json(data);
       }
 
       if (req.method === "DELETE") {
-        await db.collection("sabores").deleteMany({});
+        const { error } = await supabase.from("sabores").delete().not("id", "is", null);
+        if (error) throw error;
+
         return res.status(200).json({ message: "Todos os sabores foram removidos!" });
       }
     }
 
     // DELETE sabor individual
-    if (req.method === "DELETE" && req.url.startsWith("/sabores/")) {
-      const id = req.url.split("/").pop();
-      const result = await db.collection("sabores").deleteOne({ _id: new ObjectId(id) });
-      if (result.deletedCount === 0) {
+    if (req.method === "DELETE" && path.startsWith("/sabores/")) {
+      const id = path.split("/").pop();
+
+      const { data, error } = await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id)
+        .select();
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
         return res.status(404).json({ error: "Sabor não encontrado." });
       }
+
       return res.status(200).json({ message: "Sabor removido!" });
     }
 
-    // ================ PEDIDOS ================
+    // ================= PEDIDOS =================
     if (path === "/pedidos") {
       if (req.method === "GET") {
-        const pedidos = await db.collection("pedidos").find({}).toArray();
+        const pedidos = await getAllPedidos();
         return res.status(200).json(pedidos);
       }
 
       if (req.method === "POST") {
         const { nomeCliente, pedido, paraViagem } = body;
+
         if (!nomeCliente || !Array.isArray(pedido) || pedido.length === 0) {
-          return res.status(400).json({ error: "O pedido deve conter nomeCliente e sabores." });
+          return res.status(400).json({ error: "Pedido inválido." });
         }
 
-        // Checar estoque
+        // 🔥 pega todos sabores de uma vez (otimizado)
+        const saboresMap = await getSaboresMap();
+
+        // valida estoque
         for (const item of pedido) {
-          const sabor = await db.collection("sabores").findOne({ _id: new ObjectId(item.saborId) });
-          if (!sabor) return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          const sabor = saboresMap[item.saborId];
+
+          if (!sabor) {
+            return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          }
+
           if (sabor.quantidade < item.quantidade) {
             return res.status(400).json({ error: `Estoque insuficiente para: ${sabor.nome}` });
           }
         }
 
-        // Descontar estoque
+        // baixa estoque
         for (const item of pedido) {
-          await db.collection("sabores").updateOne(
-            { _id: new ObjectId(item.saborId) },
-            { $inc: { quantidade: -item.quantidade } }
-          );
+          const sabor = saboresMap[item.saborId];
+
+          await supabase
+            .from("sabores")
+            .update({ quantidade: sabor.quantidade - item.quantidade })
+            .eq("id", item.saborId);
         }
 
-        const result = await db.collection("pedidos").insertOne({
+        // cria pedido
+        const { data: pedidoCriado, error: pedidoError } = await supabase
+          .from("pedidos")
+          .insert([
+            {
+              nome_cliente: nomeCliente,
+              para_viagem: !!paraViagem,
+              criado_em: new Date().toISOString()
+            }
+          ])
+          .select()
+          .single();
+
+        if (pedidoError) throw pedidoError;
+
+        // itens
+        const itens = pedido.map(item => ({
+          pedido_id: pedidoCriado.id,
+          sabor_id: item.saborId,
+          quantidade: item.quantidade
+        }));
+
+        const { error: itensError } = await supabase
+          .from("pedido_itens")
+          .insert(itens);
+
+        if (itensError) throw itensError;
+
+        return res.status(201).json({
+          id: pedidoCriado.id,
           nomeCliente,
           pedido,
-          paraViagem: !!paraViagem,
-          criadoEm: new Date()
+          paraViagem
         });
-        return res.status(201).json({ id: result.insertedId, nomeCliente, pedido, paraViagem });
       }
 
       if (req.method === "DELETE") {
-        await db.collection("pedidos").deleteMany({});
+        await supabase.from("pedido_itens").delete().not("id", "is", null);
+        await supabase.from("pedidos").delete().not("id", "is", null);
+
         return res.status(200).json({ message: "Todas as comandas foram zeradas!" });
       }
     }
 
-    // EDITAR pedido individual
+    // ================= EDIT PEDIDO =================
     if ((req.method === "PUT" || req.method === "PATCH") && path.startsWith("/pedidos/")) {
       const id = path.split("/").pop();
       const { nomeCliente, pedido, paraViagem } = body;
 
-      if (!nomeCliente && !pedido && paraViagem === undefined) {
-        return res.status(400).json({ error: "Informe algum campo para atualizar." });
-      }
-
-      // Buscar pedido antigo
-      const pedidoAntigo = await db.collection("pedidos").findOne({ _id: new ObjectId(id) });
+      const pedidoAntigo = await getPedidoById(id);
       if (!pedidoAntigo) {
         return res.status(404).json({ error: "Pedido não encontrado." });
       }
 
-      // Ajustar estoque se mudou pedido
+      const saboresMap = await getSaboresMap();
+
+      // se mudou pedido
       if (pedido) {
-        // Repor antigo
-        for (const item of pedidoAntigo.pedido) {
-          await db.collection("sabores").updateOne(
-            { _id: new ObjectId(item.saborId) },
-            { $inc: { quantidade: item.quantidade } }
-          );
+        const itensAntigos = await getPedidoItems(id);
+
+        // devolve estoque antigo
+        for (const item of itensAntigos) {
+          const sabor = saboresMap[item.sabor_id];
+          if (sabor) {
+            await supabase
+              .from("sabores")
+              .update({ quantidade: sabor.quantidade + item.quantidade })
+              .eq("id", item.sabor_id);
+          }
         }
-        // Validar novo
+
+        // valida novo pedido
         for (const item of pedido) {
-          const sabor = await db.collection("sabores").findOne({ _id: new ObjectId(item.saborId) });
-          if (!sabor) return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          const sabor = saboresMap[item.saborId];
+
+          if (!sabor) {
+            return res.status(404).json({ error: `Sabor não encontrado: ${item.saborId}` });
+          }
+
           if (sabor.quantidade < item.quantidade) {
             return res.status(400).json({ error: `Estoque insuficiente para: ${sabor.nome}` });
           }
         }
-        // Descontar novo
+
+        // baixa novo estoque
         for (const item of pedido) {
-          await db.collection("sabores").updateOne(
-            { _id: new ObjectId(item.saborId) },
-            { $inc: { quantidade: -item.quantidade } }
-          );
+          const sabor = saboresMap[item.saborId];
+
+          await supabase
+            .from("sabores")
+            .update({ quantidade: sabor.quantidade - item.quantidade })
+            .eq("id", item.saborId);
         }
+
+        await supabase.from("pedido_itens").delete().eq("pedido_id", id);
+
+        const novosItens = pedido.map(item => ({
+          pedido_id: id,
+          sabor_id: item.saborId,
+          quantidade: item.quantidade
+        }));
+
+        await supabase.from("pedido_itens").insert(novosItens);
       }
 
-      // Atualizar pedido
-      const update = {};
-      if (nomeCliente) update.nomeCliente = nomeCliente;
-      if (pedido) update.pedido = pedido;
-      if (paraViagem !== undefined) update.paraViagem = !!paraViagem;
+      const updatePayload = {};
+      if (nomeCliente) updatePayload.nome_cliente = nomeCliente;
+      if (paraViagem !== undefined) updatePayload.para_viagem = !!paraViagem;
 
-      await db.collection("pedidos").updateOne(
-        { _id: new ObjectId(id) },
-        { $set: update }
-      );
+      if (Object.keys(updatePayload).length > 0) {
+        await supabase.from("pedidos").update(updatePayload).eq("id", id);
+      }
 
       return res.status(200).json({ message: "Pedido atualizado com sucesso!" });
     }
 
-    // DELETE pedido individual
+    // ================= DELETE PEDIDO =================
     if (req.method === "DELETE" && path.startsWith("/pedidos/")) {
       const id = path.split("/").pop();
-      await db.collection("pedidos").deleteOne({ _id: new ObjectId(id) });
+
+      await supabase.from("pedido_itens").delete().eq("pedido_id", id);
+      await supabase.from("pedidos").delete().eq("id", id);
+
       return res.status(200).json({ message: "Comanda concluída!" });
     }
 
