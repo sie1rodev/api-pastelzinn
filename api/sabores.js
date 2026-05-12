@@ -1,7 +1,6 @@
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
-  res.json({ ok: true });
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const { method, body } = req;
@@ -36,5 +35,5 @@ export default async function handler(req, res) {
     return res.json({ data, error });
   }
 
-  res.status(405).json({ error: "Method not allowed" });
+  return res.status(405).json({ error: "Method not allowed" });
 }
