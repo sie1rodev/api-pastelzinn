@@ -24,9 +24,9 @@ function getPath(req) {
 
 // ================= DASHBOARD =================
 async function getDashboard() {
-  const { data: pedidos } = await supabase.from("pedidos").select("*");
-  const { data: itens } = await supabase.from("pedido_itens").select("*");
-  const { data: sabores } = await supabase.from("sabores").select("*");
+  const { data: pedidos = [] } = await supabase.from("pedidos").select("*");
+  const { data: itens = [] } = await supabase.from("pedido_itens").select("*");
+  const { data: sabores = [] } = await supabase.from("sabores").select("*");
 
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
@@ -76,9 +76,11 @@ async function getDashboard() {
 
 // ================= HANDLER =================
 module.exports = async (req, res) => {
+
+  // ================= CORS FIX =================
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
@@ -95,10 +97,7 @@ module.exports = async (req, res) => {
     if (path === "/sabores") {
 
       if (req.method === "GET") {
-        const { data, error } = await supabase
-          .from("sabores")
-          .select("*");
-
+        const { data, error } = await supabase.from("sabores").select("*");
         if (error) throw error;
         return res.json(data);
       }
@@ -117,7 +116,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // ================= DELETE SABOR (CORRIGIDO) =================
+    // ================= DELETE SABOR =================
     if (path.startsWith("/sabores/") && req.method === "DELETE") {
       const id = path.split("/").pop();
 
@@ -169,7 +168,6 @@ module.exports = async (req, res) => {
 
         await supabase.from("pedido_itens").insert(itens);
 
-        // ================= BAIXA ESTOQUE =================
         for (const i of pedido) {
           const { data: sabor } = await supabase
             .from("sabores")
@@ -188,7 +186,6 @@ module.exports = async (req, res) => {
         return res.status(201).json(p);
       }
 
-      // ================= ENCERRAR PEDIDO =================
       if (req.method === "DELETE" && path.startsWith("/pedidos/")) {
         const id = path.split("/").pop();
 
@@ -201,6 +198,20 @@ module.exports = async (req, res) => {
           .eq("id", id);
 
         return res.json({ ok: true });
+      }
+    }
+
+    // ================= PEDIDO_ITENS (🔥 FALTAVA ISSO) =================
+    if (path === "/pedido_itens") {
+
+      if (req.method === "GET") {
+        const { data, error } = await supabase
+          .from("pedido_itens")
+          .select("*");
+
+        if (error) throw error;
+
+        return res.json(data);
       }
     }
 
