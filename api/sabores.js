@@ -113,19 +113,17 @@ module.exports = async (req, res) => {
 if (req.method === "DELETE") {
   const id = req.query?.id || body?.id;
 
-  console.log("ID RECEBIDO:", id);
+  console.log("🧨 DELETE ID RECEBIDO:", id);
 
-  const check = await supabase
+  const result = await supabase
     .from("sabores")
-    .select("*")
-    .eq("id", id);
+    .delete()
+    .eq("id", id)
+    .select();
 
-  console.log("EXISTE NO BANCO:", check);
+  console.log("🧾 DELETE RESULT:", result);
 
-  return res.status(200).json({
-    id,
-    check
-  });
+  return res.status(200).json(result);
 }
 
     // ======================
