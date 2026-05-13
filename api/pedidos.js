@@ -1,31 +1,65 @@
 const { supabase } = require("../lib/supabase");
-const allowCors = require("../lib/allowCors");
 
-const handler = async (req, res) => {
-  const body = req.body ? JSON.parse(req.body) : {};
+module.exports = async (req, res) => {
+  try {
+    // ======================
+    // CORS
+    // ======================
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,DELETE,OPTIONS"
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type"
+    );
 
-  // GET
-  if (req.method === "GET") {
-    const { data, error } = await supabase
-      .from("pedidos")
-      .select("*, pedido_itens(*, sabores(*))");
+    // Preflight
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
 
-    return res.status(200).json({ data, error });
+    const body = req.body || {};
+
+    // ======================
+    // GET
+    // ======================
+    if (req.method === "GET") {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .select("*, pedido_itens(*, sabores(*))");
+
+      if (error) {
+        console.error("GET ERROR:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      return res.status(200).json({ data });
+    }
+
+    // ======================
+    // POST
+    // ======================
+    if (req.method === "POST") {
+      const { nome_cliente, para_viagem } = body;
+
+      const { data, error } = await supabase
+        .from("pedidos")
+        .insert([{ nome_cliente, para_viagem }])
+        .select();
+
+      if (error) {
+        console.error("POST ERROR:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      return res.status(200).json({ data });
+    }
+
+    return res.status(405).json({ error: "Method not allowed" });
+  } catch (err) {
+    console.error("API CRASH:", err);
+    return res.status(500).json({ error: "Internal Server Error", details: err.message });
   }
-
-  // POST
-  if (req.method === "POST") {
-    const { nome_cliente, para_viagem } = body;
-
-    const { data, error } = await supabase
-      .from("pedidos")
-      .insert([{ nome_cliente, para_viagem }])
-      .select();
-
-    return res.status(200).json({ data, error });
-  }
-
-  return res.status(405).json({ error: "Method not allowed" });
 };
-
-module.exports = allowCors(handler);
