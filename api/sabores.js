@@ -1,4 +1,5 @@
 const { supabase } = require("../lib/supabase");
+const allowCors = require("../lib/allowCors");
 
 module.exports = async (req, res) => {
 
@@ -24,7 +25,7 @@ module.exports = async (req, res) => {
       : req.body || {};
 
   // ======================
-  // GET
+  // GET - LISTAR SABORES
   // ======================
   if (req.method === "GET") {
 
@@ -40,15 +41,10 @@ module.exports = async (req, res) => {
   }
 
   // ======================
-  // POST
+  // POST - CRIAR SABOR
   // ======================
   if (req.method === "POST") {
-
-    const {
-      nome,
-      quantidade,
-      preco
-    } = body;
+    const { nome, quantidade, preco } = body;
 
     const { data, error } =
       await supabase
@@ -59,7 +55,8 @@ module.exports = async (req, res) => {
             quantidade,
             preco
           }
-        ]);
+        ])
+        .select();
 
     return res.status(200).json({
       data,
@@ -68,16 +65,11 @@ module.exports = async (req, res) => {
   }
 
   // ======================
-  // PUT
+  // PUT - EDITAR SABOR
   // ======================
   if (req.method === "PUT") {
 
-    const {
-      id,
-      nome,
-      quantidade,
-      preco
-    } = body;
+    const { id, nome, quantidade, preco } = body;
 
     const { data, error } =
       await supabase
@@ -87,7 +79,8 @@ module.exports = async (req, res) => {
           quantidade,
           preco
         })
-        .eq("id", id);
+        .eq("id", id)
+        .select();
 
     return res.status(200).json({
       data,
@@ -95,6 +88,102 @@ module.exports = async (req, res) => {
     });
   }
 
+  // ======================
+  // DELETE - EXCLUIR SABOR
+  // ======================
+  if (req.method === "DELETE") {
+    const { id } = body;
+
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id)
+        .select();
+
+    return res.status(200).json({
+      data,
+      error
+    });
+  }
+
+  // ======================
+  // METHOD NOT ALLOWED
+  // ======================
+  return res.status(405).json({
+    error: "Method not allowed"
+  });
+};
+
+module.exports = allowCors(handler);
+
+    const { nome, quantidade, preco } = body;
+
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .insert([
+          {
+            nome,
+            quantidade,
+            preco
+          }
+        ])
+        .select();
+
+    return res.status(200).json({
+      data,
+      error
+    });
+  }
+
+  // ======================
+  // PUT - EDITAR SABOR
+  // ======================
+  if (req.method === "PUT") {
+
+    const { id, nome, quantidade, preco } = body;
+
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .update({
+          nome,
+          quantidade,
+          preco
+        })
+        .eq("id", id)
+        .select();
+
+    return res.status(200).json({
+      data,
+      error
+    });
+  }
+
+  // ======================
+  // DELETE - EXCLUIR SABOR
+  // ======================
+  if (req.method === "DELETE") {
+
+    const { id } = body;
+
+    const { data, error } =
+      await supabase
+        .from("sabores")
+        .delete()
+        .eq("id", id)
+        .select();
+
+    return res.status(200).json({
+      data,
+      error
+    });
+  }
+
+  // ======================
+  // METHOD NOT ALLOWED
+  // ======================
   return res.status(405).json({
     error: "Method not allowed"
   });

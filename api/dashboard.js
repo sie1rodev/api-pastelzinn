@@ -1,35 +1,18 @@
 const { supabase } = require("../lib/supabase");
+const allowCors = require("../lib/allowCors");
 
-module.exports = async (req, res) => {
+const handler = async (req, res) => {
+  const seteDias = new Date(Date.now() - 7 * 86400000).toISOString();
 
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,OPTIONS"
-  );
-
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  const seteDias =
-    new Date(
-      Date.now() - 7 * 86400000
-    ).toISOString();
-
-  const { data, error } =
-    await supabase
-      .from("pedidos")
-      .select("*")
-      .gte("criado_em", seteDias);
+  const { data } = await supabase
+    .from("pedidos")
+    .select("*")
+    .gte("criado_em", seteDias)
+    .eq("status", "encerrado");
 
   return res.status(200).json({
-    vendas_semana: data?.length || 0,
-    error
+    vendas_semana: data?.length || 0
   });
 };
+
+module.exports = allowCors(handler);
