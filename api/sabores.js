@@ -113,7 +113,12 @@ module.exports = async (req, res) => {
 if (req.method === "DELETE") {
   const id = req.query?.id || body?.id;
 
-  console.log("🧨 DELETE ID RECEBIDO:", id);
+  const before = await supabase
+    .from("sabores")
+    .select("*")
+    .eq("id", id);
+
+  console.log("ANTES:", before);
 
   const result = await supabase
     .from("sabores")
@@ -121,9 +126,20 @@ if (req.method === "DELETE") {
     .eq("id", id)
     .select();
 
-  console.log("🧾 DELETE RESULT:", result);
+  console.log("DELETE RESULT:", result);
 
-  return res.status(200).json(result);
+  const after = await supabase
+    .from("sabores")
+    .select("*")
+    .eq("id", id);
+
+  console.log("DEPOIS:", after);
+
+  return res.status(200).json({
+    before,
+    result,
+    after
+  });
 }
 
     // ======================
