@@ -6,7 +6,7 @@ module.exports = async (req, res) => {
 
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET,POST,PUT,OPTIONS"
+    "GET,POST,PUT,OPTIONS,DELETE"
   );
 
   res.setHeader(
