@@ -1,8 +1,24 @@
 const { supabase } = require("../lib/supabase");
 const allowCors = require("../lib/allowCors");
 
-const handler = async (req, res) => {
-  // Body parse seguro
+module.exports = async (req, res) => {
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,OPTIONS,DELETE"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   const body =
     typeof req.body === "string"
       ? JSON.parse(req.body)
