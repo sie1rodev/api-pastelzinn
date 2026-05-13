@@ -110,32 +110,23 @@ module.exports = async (req, res) => {
     // ======================
     // DELETE - EXCLUIR SABOR (BLINDADO)
     // ======================
-    if (req.method === "DELETE") {
-      const id = req.query?.id || body?.id;
+if (req.method === "DELETE") {
+  const id = req.query?.id || body?.id;
 
-      console.log("DELETE REQUEST ID:", id);
+  console.log("ID RECEBIDO:", id);
 
-      if (!id) {
-        return res.status(400).json({
-          error: "ID obrigatório para deletar"
-        });
-      }
+  const check = await supabase
+    .from("sabores")
+    .select("*")
+    .eq("id", id);
 
-      const { data, error } = await supabase
-        .from("sabores")
-        .delete()
-        .eq("id", id)
-        .select();
+  console.log("EXISTE NO BANCO:", check);
 
-      if (error) {
-        console.error("DELETE ERROR:", error);
-        return res.status(500).json({
-          error: error.message
-        });
-      }
-
-      return res.status(200).json({ data });
-    }
+  return res.status(200).json({
+    id,
+    check
+  });
+}
 
     // ======================
     // METHOD NOT ALLOWED
