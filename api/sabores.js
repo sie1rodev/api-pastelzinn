@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
     }
 
     // ======================
-    // BODY SAFE PARSE (IMPORTANTE NO VERCEL)
+    // BODY SAFE PARSE (Vercel fix)
     // ======================
     let body = {};
 
@@ -62,7 +62,13 @@ module.exports = async (req, res) => {
 
       const { data, error } = await supabase
         .from("sabores")
-        .insert([{ nome, quantidade, preco }])
+        .insert([
+          {
+            nome,
+            quantidade: Number(quantidade || 0),
+            preco: Number(preco || 0)
+          }
+        ])
         .select();
 
       if (error) {
@@ -85,7 +91,11 @@ module.exports = async (req, res) => {
 
       const { data, error } = await supabase
         .from("sabores")
-        .update({ nome, quantidade, preco })
+        .update({
+          nome,
+          quantidade: Number(quantidade),
+          preco: Number(preco)
+        })
         .eq("id", id)
         .select();
 
@@ -98,10 +108,12 @@ module.exports = async (req, res) => {
     }
 
     // ======================
-    // DELETE - EXCLUIR SABOR (CORRIGIDO)
+    // DELETE - EXCLUIR SABOR (BLINDADO)
     // ======================
     if (req.method === "DELETE") {
       const id = req.query?.id || body?.id;
+
+      console.log("DELETE REQUEST ID:", id);
 
       if (!id) {
         return res.status(400).json({
@@ -117,7 +129,9 @@ module.exports = async (req, res) => {
 
       if (error) {
         console.error("DELETE ERROR:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({
+          error: error.message
+        });
       }
 
       return res.status(200).json({ data });
